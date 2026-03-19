@@ -87,6 +87,14 @@ def formatear_disponibilidad(nombre: str, resultado: dict) -> str:
                 f"    Vence: {escapar_md(m.vencimiento)}\n\n"
             )
 
+    # Matches fonéticos
+    foneticos = resultado.get("foneticos", [])
+    if foneticos:
+        msg += f"\n🔊 *Similitud fonética detectada:*\n"
+        for marca, sim in foneticos[:5]:
+            pct = int(sim * 100)
+            msg += f"  • {escapar_md(marca.denominacion)} \\({pct}% similar\\)\n"
+
     msg += f"\n⚖️ _{escapar_md(resultado['disclaimer'])}_"
     return msg
 

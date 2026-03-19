@@ -51,7 +51,7 @@ def main():
     print(f"[3/5] Token encontrado ({token[:10]}...)")
 
     try:
-        from telegram.ext import Application, CommandHandler, MessageHandler, filters
+        from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, InlineQueryHandler, filters
     except ImportError:
         print("\n❌ ERROR: python-telegram-bot no está instalado")
         print("   Corré: pip install python-telegram-bot")
@@ -59,36 +59,75 @@ def main():
 
     print("[4/5] Registrando comandos...")
 
-    from bot.handlers.search import cmd_buscar, cmd_disponible, cmd_buscar_todas
+    from bot.handlers.search import cmd_buscar, cmd_disponible, cmd_buscar_todas, cmd_cuit
     from bot.handlers.info import cmd_start, cmd_ayuda, cmd_clase, cmd_clases
     from bot.handlers.faq import (
         cmd_consulta, cmd_clavefiscal, cmd_monotributo, cmd_factura,
-        cmd_inpi, cmd_tramites, cmd_registrar, handle_texto_libre,
+        cmd_inpi, cmd_arca, cmd_tramites, cmd_registrar, handle_texto_libre,
+        cmd_monotributo_calc, cmd_vencimientos, cmd_costos,
     )
+    from bot.handlers.callbacks import handle_callback
+    from bot.handlers.checklist import cmd_checklist
+    from bot.handlers.inline import handle_inline_query
+    from bot.handlers.vigilancia import cmd_vigilar, cmd_mis_vigilancias, cmd_dejar_vigilar
+    from bot.services.monitor import chequear_vigilancias
+    from bot.db import init_db
 
     app = Application.builder().token(token).build()
 
-    # Comandos de búsqueda de marcas
+    # Inicializar base de datos
+    import asyncio
+    asyncio.run(init_db())
+
+    # Comandos informativos
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("ayuda", cmd_ayuda))
     app.add_handler(CommandHandler("help", cmd_ayuda))
+
+    # Comandos de búsqueda de marcas + CUIT
     app.add_handler(CommandHandler("buscar", cmd_buscar))
     app.add_handler(CommandHandler("disponible", cmd_disponible))
     app.add_handler(CommandHandler("buscar_todas", cmd_buscar_todas))
     app.add_handler(CommandHandler("clase", cmd_clase))
     app.add_handler(CommandHandler("clases", cmd_clases))
+    app.add_handler(CommandHandler("cuit", cmd_cuit))
 
-    # Comandos de FAQ / consultas
+    # Comandos de FAQ / menús interactivos
     app.add_handler(CommandHandler("consulta", cmd_consulta))
     app.add_handler(CommandHandler("clavefiscal", cmd_clavefiscal))
     app.add_handler(CommandHandler("monotributo", cmd_monotributo))
     app.add_handler(CommandHandler("factura", cmd_factura))
     app.add_handler(CommandHandler("inpi", cmd_inpi))
+    app.add_handler(CommandHandler("arca", cmd_arca))
     app.add_handler(CommandHandler("tramites", cmd_tramites))
     app.add_handler(CommandHandler("registrar", cmd_registrar))
 
+    # Nuevos comandos
+    app.add_handler(CommandHandler("monotributo_calc", cmd_monotributo_calc))
+    app.add_handler(CommandHandler("vencimientos", cmd_vencimientos))
+    app.add_handler(CommandHandler("costos_marca", cmd_costos))
+    app.add_handler(CommandHandler("checklist", cmd_checklist))
+
+    # Vigilancia de marcas
+    app.add_handler(CommandHandler("vigilar", cmd_vigilar))
+    app.add_handler(CommandHandler("mis_vigilancias", cmd_mis_vigilancias))
+    app.add_handler(CommandHandler("dejar_vigilar", cmd_dejar_vigilar))
+
+    # Callback handler para botones inline (navegación jerárquica)
+    app.add_handler(CallbackQueryHandler(handle_callback))
+
+    # Inline query handler (@arcafaq_bot <consulta>)
+    app.add_handler(InlineQueryHandler(handle_inline_query))
+
     # Texto libre (va ÚLTIMO, es el fallback para cualquier mensaje)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_texto_libre))
+
+    # Job de vigilancia: chequear cada 6 horas
+    app.job_queue.run_repeating(
+        chequear_vigilancias,
+        interval=21600,  # 6 horas en segundos
+        first=60,  # primera ejecución en 1 minuto
+    )
 
     print("[5/5] Bot arrancando... (presioná Ctrl+C para parar)")
     print("      Abrí Telegram y escribile /start a tu bot\n")

@@ -2,33 +2,35 @@
 Handlers informativos: /start, /ayuda, /clase, /clases
 """
 
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from bot.utils.niza_classes import CLASES_NIZA, obtener_clase, buscar_clases_por_keyword
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler para /start"""
-    await update.message.reply_text(
+    """Handler para /start - muestra menú principal con botones."""
+    texto = (
         "Hola! Soy el bot de ARCA/INPI.\n\n"
-        "Te ayudo a consultar marcas registradas en Argentina "
-        "y a resolver dudas sobre trámites en ARCA.\n\n"
-        "MARCAS:\n"
-        "  /buscar <nombre> - Buscar marcas vigentes\n"
-        "  /disponible <nombre> - Verificar disponibilidad\n"
-        "  /registrar - Como registrar una marca\n"
-        "  /clase <numero> - Info sobre una clase Niza\n"
-        "  /clases <actividad> - Buscar clases por rubro\n\n"
-        "ARCA / TRÁMITES:\n"
-        "  /clavefiscal - Como obtener o recuperar tu clave\n"
-        "  /inpi - Que es el INPI y como acceder\n"
-        "  /monotributo - Info sobre monotributo\n"
-        "  /factura - Como facturar electrónicamente\n"
-        "  /tramites - Trámites disponibles online\n\n"
-        "También podés escribir cualquier pregunta directamente "
-        "y te respondo lo mejor que pueda.\n\n"
-        "Ejemplo: \"como saco la clave fiscal?\""
+        "Te ayudo a consultar marcas registradas, datos de CUIT, "
+        "calcular monotributo y resolver dudas sobre trámites en ARCA.\n\n"
+        "Elegí un tema o usá los comandos de abajo:"
+    )
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("INPI (Marcas y Patentes)", callback_data="menu_inpi")],
+        [InlineKeyboardButton("Clave Fiscal", callback_data="menu_clavefiscal")],
+        [InlineKeyboardButton("ARCA (ex AFIP)", callback_data="menu_arca")],
+        [InlineKeyboardButton("Monotributo", callback_data="menu_monotributo")],
+        [InlineKeyboardButton("Facturación Electrónica", callback_data="menu_factura")],
+        [InlineKeyboardButton("Consultar CUIT", callback_data="tool_cuit")],
+        [InlineKeyboardButton("Calculadora Monotributo", callback_data="tool_monotributo_calc")],
+        [InlineKeyboardButton("Vencimientos Fiscales", callback_data="tool_vencimientos")],
+    ])
+
+    await update.message.reply_text(
+        texto,
+        reply_markup=keyboard,
     )
 
 
@@ -36,29 +38,32 @@ async def cmd_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler para /ayuda"""
     await update.message.reply_text(
         "Guía del bot ARCA/INPI\n\n"
+        "MENÚS INTERACTIVOS:\n"
+        "  /inpi → Marcas, patentes, diseños industriales\n"
+        "  /clavefiscal → Obtener, recuperar, niveles\n"
+        "  /arca → Todo sobre ARCA (ex AFIP)\n"
+        "  /monotributo → Inscripción, categorías, facturación\n"
+        "  /factura → Facturación electrónica\n\n"
         "BUSCAR MARCAS:\n"
-        "  /buscar DAMM --> marcas vigentes que contengan \"DAMM\"\n"
-        "  /buscar DAMM 35 --> solo en clase 35\n"
-        "  /disponible MiMarca --> nombre exacto disponible?\n"
-        "  /disponible MiMarca 42 --> solo en clase 42\n"
-        "  /buscar_todas DAMM --> incluye no vigentes\n\n"
-        "CLASES NIZA (clasificación de marcas):\n"
-        "  /clase 42 --> que cubre la clase 42\n"
-        "  /clases software --> clases relacionadas con software\n\n"
-        "CONSULTAS ARCA:\n"
-        "  /clavefiscal --> como obtener/recuperar\n"
-        "  /clavefiscal recuperar --> recuperar clave olvidada\n"
-        "  /clavefiscal niveles --> niveles de seguridad\n"
-        "  /inpi --> que es y como acceder al INPI\n"
-        "  /registrar --> paso a paso para registrar marca\n"
-        "  /monotributo --> info monotributo\n"
-        "  /factura --> como facturar\n"
-        "  /tramites --> tramites disponibles online\n\n"
+        "  /buscar DAMM → Marcas vigentes que contengan \"DAMM\"\n"
+        "  /buscar DAMM 35 → Solo en clase 35\n"
+        "  /disponible MiMarca → Disponible? (con análisis fonético)\n"
+        "  /buscar_todas DAMM → Incluye no vigentes\n\n"
+        "HERRAMIENTAS:\n"
+        "  /cuit 20123456789 → Datos públicos de un CUIT\n"
+        "  /monotributo_calc 5000000 → Calculadora de categoría\n"
+        "  /vencimientos → Próximos vencimientos fiscales\n"
+        "  /vencimientos 3 → Para CUIT terminado en 3\n"
+        "  /costos_marca → Aranceles del INPI\n"
+        "  /checklist registro_marca → Checklist paso a paso\n\n"
+        "CLASES NIZA:\n"
+        "  /clase 42 → Que cubre la clase 42\n"
+        "  /clases software → Clases para tu actividad\n\n"
+        "MODO INLINE:\n"
+        "  Escribí @arcafaq_bot <consulta> en cualquier chat\n\n"
         "TEXTO LIBRE:\n"
-        "  Escribí cualquier pregunta y te respondo.\n"
-        "  Ej: \"como adhiero un servicio en arca?\"\n"
-        "  Ej: \"que necesito para registrar una marca?\"\n\n"
-        "Si no tengo la respuesta, te mando el link oficial donde encontrarla.",
+        "  Escribí cualquier pregunta y te respondo.\n\n"
+        "Tocá los botones en los mensajes para navegar entre temas.",
         disable_web_page_preview=True,
     )
 
@@ -82,8 +87,14 @@ async def cmd_clase(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if descripcion:
         tipo = "Productos" if numero <= 34 else "Servicios"
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Registrar una marca", callback_data="inpi_registrar")],
+            [InlineKeyboardButton("Ver todas las clases Niza", callback_data="inpi_clases_niza")],
+            [InlineKeyboardButton("Menú INPI", callback_data="menu_inpi")],
+        ])
         await update.message.reply_text(
-            f"Clase {numero} ({tipo}):\n{descripcion}"
+            f"Clase {numero} ({tipo}):\n{descripcion}",
+            reply_markup=keyboard,
         )
     else:
         await update.message.reply_text(
@@ -114,7 +125,16 @@ async def cmd_clases(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for num, desc in resultados:
             tipo = "P" if num <= 34 else "S"
             lines.append(f"  [{tipo}] Clase {num}: {desc}")
-        await update.message.reply_text("\n".join(lines))
+
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Registrar una marca", callback_data="inpi_registrar")],
+            [InlineKeyboardButton("Costos y aranceles", callback_data="inpi_costos")],
+            [InlineKeyboardButton("Menú INPI", callback_data="menu_inpi")],
+        ])
+        await update.message.reply_text(
+            "\n".join(lines),
+            reply_markup=keyboard,
+        )
     else:
         await update.message.reply_text(
             f"No encontré clases para \"{keyword}\".\n"

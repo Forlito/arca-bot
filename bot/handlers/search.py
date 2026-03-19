@@ -1,6 +1,6 @@
 """
-Handlers para búsqueda de marcas en el INPI.
-Comandos: /buscar, /disponible
+Handlers para búsqueda de marcas en el INPI y consulta de CUIT.
+Comandos: /buscar, /disponible, /cuit
 """
 
 import logging
@@ -8,7 +8,10 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from bot.scrapers.inpi_marcas import buscar_marcas, verificar_disponibilidad, INPIError
+from bot.scrapers.arca_padron import consultar_cuit, formatear_persona, PadronError
 from bot.utils.formatter import formatear_resultados, formatear_disponibilidad
+from bot.utils.validators import validar_cuit, formatear_cuit
+from bot.utils.fonetica import encontrar_similares_foneticos
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +116,12 @@ async def cmd_disponible(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         resultado = await verificar_disponibilidad(nombre=nombre, clase=clase)
+
+        # Agregar análisis fonético
+        todas = resultado["exactas"] + resultado["similares"]
+        foneticos = encontrar_similares_foneticos(nombre, todas, umbral=0.7)
+        resultado["foneticos"] = foneticos
+
         texto = formatear_disponibilidad(nombre, resultado)
         await msg.edit_text(texto, parse_mode="MarkdownV2")
 
@@ -171,3 +180,44 @@ async def cmd_buscar_todas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error en /buscar_todas: {e}", exc_info=True)
         await msg.edit_text("❌ Algo falló. Intentá de nuevo en unos minutos.")
+
+
+async def cmd_cuit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    /cuit <numero>
+    Consulta datos públicos de un CUIT en ARCA.
+
+    Ejemplos:
+        /cuit 20-12345678-9
+        /cuit 20123456789
+    """
+    if not context.args:
+        await update.message.reply_text(
+            "Usá: /cuit <numero>\n\n"
+            "Ejemplos:\n"
+            "  /cuit 20-12345678-9\n"
+            "  /cuit 20123456789\n\n"
+            "Consulta datos públicos del padrón de ARCA."
+        )
+        return
+
+    cuit_input = "".join(context.args)
+    es_valido, resultado = validar_cuit(cuit_input)
+
+    if not es_valido:
+        await update.message.reply_text(f"⚠️ {resultado}")
+        return
+
+    cuit_limpio = resultado
+    cuit_formateado = formatear_cuit(cuit_limpio)
+    msg = await update.message.reply_text(f"🔍 Consultando CUIT {cuit_formateado}...")
+
+    try:
+        data = await consultar_cuit(cuit_limpio)
+        texto = formatear_persona(data)
+        await msg.edit_text(texto)
+    except PadronError as e:
+        await msg.edit_text(f"⚠️ {str(e)}")
+    except Exception as e:
+        logger.error(f"Error en /cuit: {e}", exc_info=True)
+        await msg.edit_text("❌ Algo falló al consultar ARCA. Probá de nuevo.")
